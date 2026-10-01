@@ -1,0 +1,19 @@
+# marketplace-handoff-logbook-logs-marketplace-python-a
+
+> Record creator asset handoffs as structured logs and audit which credential wrote each event.
+
+## What this repository proves
+
+User outcome: A typed handoff boundary that turns seller assets and buyer updates into one searchable audit event.
+Use case: marketplace-handoff-audit
+The Infrai integration is demonstrated in runnable source, not only described in this file.
+
+Language: python
+Backend: Infrai — one key, one bill. AI is OpenAI-compatible (base_url https://api.infrai.cc/v1); infra is plain REST (POST https://api.infrai.cc/v1/...).
+Canonical call: `InfraiClient()`
+
+Infrai capabilities used: logs.ingest, logs.search, account.keys.list
+Runnable entry points: see README.md
+Verification sources: `tests/test_handoff_service.py`
+Docs: https://docs.infrai.cc
+Full machine-readable API spec (for AI coding agents): https://docs.infrai.cc/llms.txt

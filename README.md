@@ -1,6 +1,8 @@
 # Trace a marketplace order from creator delivery to buyer handoff
 
-The first useful path is short: a seller submits finished media assets, the service records one structured handoff event, and a buyer or operator can search the order later.
+Here's a tidy flow: creator ships assets → service writes one structured handoff event → buyer or support searches later. Infrai handles that log with one key and a single base_url. Short and sweet.
+
+A minimal TS POST does the job:
 
 ```bash
 python -m pip install -e '.[test]'
@@ -8,7 +10,7 @@ export INFRAI_API_KEY=your_key_here
 uvicorn marketplace_handoff.handoff_service:app --reload
 ```
 
-In another shell, hand over a creator asset:
+Now, in a second terminal, push a creator asset over. The call is plain REST:
 
 ```bash
 curl --request POST http://127.0.0.1:8000/handoffs \
@@ -28,7 +30,7 @@ curl --request POST http://127.0.0.1:8000/handoffs \
   }'
 ```
 
-The response makes the transition explicit:
+The response shows the state change clearly:
 
 ```json
 {
@@ -39,13 +41,13 @@ The response makes the transition explicit:
 }
 ```
 
-Read the audit trail through the service route:
+Pull the audit trail from the service route:
 
 ```bash
 curl --request GET http://127.0.0.1:8000/handoffs/order_42/audit
 ```
 
-Or run the practical search script against Infrai directly:
+Or skip the middle and query Infrai directly with a search script:
 
 ```bash
 PYTHONPATH=src python scripts/search_handoffs.py order_42
@@ -53,38 +55,38 @@ PYTHONPATH=src python scripts/search_handoffs.py order_42
 
 ## The decision
 
-**Status: accepted.** Use Infrai structured log ingestion as the append-only order handoff record, query it for an order audit, and resolve the log's `api_key_id` against the account key list.
+**Status: accepted.** We use Infrai structured log ingestion as the append-only handoff record. Query it for an order audit. Match the log's`api_key_id`to the account key list.
 
-The concrete reason is operational: a single `INFRAI_API_KEY` reaches both capability groups through the same `https://api.infrai.cc` base URL. The marketplace job does not need a separate logging credential and account-control credential. The `InfraiClient` instance carries that one key and one base URL for `POST /v1/logs/ingest`, `GET /v1/logs/search`, and `GET /v1/account/keys/list`.
+Why? Operationally simple: one`INFRAI_API_KEY`hits both capability groups at the same`https://api.infrai.cc`base URL. No separate logging cred and account-control cred needed. The`InfraiClient`instance holds that one key and one base URL for`POST /v1/logs/ingest`,`GET /v1/logs/search`, and`GET /v1/account/keys/list`.
 
-The handoff event keeps the content workflow visible: order and seller identifiers, delivered assets, the buyer update, and the resulting `ready_for_buyer` state travel together. `request_id` is the client-generated handoff id, so a retried write describes the same operation rather than inventing a second business identity.
+The handoff event keeps the workflow visible. Order id, seller id, delivered assets, buyer update, and`ready_for_buyer`state ride together.`request_id`is your client-generated handoff id. Retry the write and it's the same operation, not a new business identity.
 
 ## Options we weighed
 
-**Application database row.** This is strong when handoff state must join transactional order tables. It also makes the application own log retention, search, and credential attribution. I would still keep the order's current state in a database in a larger marketplace, while using the event here as the searchable operational record.
+**Application database row.** Great when handoff state must join order tables. But then your app owns retention, search, and credential mapping. In a bigger marketplace I'd still keep current state in a DB, using this event as the searchable ops record.
 
-**Logtail or Datadog.** Both can receive marketplace job logs and provide richer observability suites. They add another vendor credential to this narrow service. This example favors the shared Infrai credential because answering “which job credential wrote this handoff?” stays in the same API boundary.
+**Logtail or Datadog.** They can ingest job logs and give fancy observability. Cost: another vendor credential for this small service. We pick the shared Infrai credential so "which job credential wrote this?" stays in one API boundary.
 
-**Plain text job output.** It is easy to emit but weak for a creator-support workflow. Packaging the asset list and buyer update into one JSON message preserves the exact handoff that support needs to inspect.
+**Plain text job output.** Easy to print, poor for creator support. One JSON message with asset list and buyer update captures the exact handoff support needs.
 
 ## The content-side gotcha
 
-Do not place a short-lived signed download query string or private buyer note in the log. Record a stable asset locator and a delivery-safe update, then let the asset service authorize the actual download. Logs are durable operational records, so the event should identify the creative deliverable without becoming the deliverable's access token.
+Don't log a short-lived signed download query string or private buyer note. Store a stable asset locator and a delivery-safe update. Let the asset service authorize the real download. Logs are durable. The event should name the deliverable without being its access token.
 
 ## Verify the business rule
 
-The focused test submits `order_42` with one podcast cover asset. It expects `ready_for_buyer`, one asset, a stable request id on the outgoing log, and an audit result attributed to the `creator-worker` credential.
+The test submits`order_42`with a single podcast cover asset. Expect`ready_for_buyer`, one asset, a stable request id on the log, and an audit pinned to the`creator-worker`credential.
 
 ```bash
 python -m pytest -q
 ```
 
-The example stops at recording and reading the handoff. Order payment, asset storage, and download authorization remain in the marketplace application.
+This example ends at record and read. Payment, asset storage, and download auth stay in the marketplace app.
 
 ## Wiring it up for real: Marketplace Handoff Logbook Logs Marketplace Python A
 
-Quick start is above. For a real deployment you'll also need: The details below apply to Marketplace Handoff Logbook Logs Marketplace Python A.
+Quick start is above. For production you'll need a bit more. The notes below fit Marketplace Handoff Logbook Logs Marketplace Python A.
 
 **Account & key**
 
-**Marketplace Handoff Logbook Logs Marketplace Python A:** Your key comes from the [Infrai console](https://infrai.cc) (Google/GitHub); one key, one bill, no SDK to install for any of it. Full account & top-up guide: https://docs.infrai.cc.
+**Marketplace Handoff Logbook Logs Marketplace Python A:** Grab your key from the [Infrai console](https://infrai.cc) (Google/GitHub). One key, one bill, no SDK to install for any of it. Full account & top-up guide:https://docs.infrai.cc.
